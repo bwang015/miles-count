@@ -36,7 +36,7 @@ open(os.path.join(M, "Miles_Count_Game.html"), "w").write(html)
 # generator test bundle (pure functions only)
 gen = body.split("export default function App()")[0]
 gen = "const React = { createElement: (..._a: unknown[]) => null, Fragment: null };\ntype CSSProperties = { [k: string]: unknown };\n" + gen
-gen += "\nexport { makeQ, parseSave, speechFor, promptFor, ITEMS, unlockedFor, lookAlikes };\n"
+gen += "\nexport { makeQ, parseSave, speechFor, promptFor, ITEMS, unlockedFor, lookAlikes, REX_ITEMS, REX_COST, CARS, REWARDS, EXTRAS, nextPrize, rewardsBetween, encodeSave, decodeCode, defaultSave, normalizeGarage, QUICK_FLASH_MS, LETTER_ORDER, letterPool, codeSummary, GARAGE_OPEN, GOLD_START, TROPHY_START, TROPHY_STEP };\n"
 open("/tmp/miles_gen.tsx", "w").write(gen)
 subprocess.run([os.path.join(B, "node_modules/.bin/esbuild"), "/tmp/miles_gen.tsx", "--format=esm", "--outfile=/tmp/miles_gen.mjs", "--log-level=warning"], cwd=B, check=True)
 print("ok", len(html))
