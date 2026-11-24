@@ -243,7 +243,7 @@ function levelInfo(mode: Mode, lv: number): string {
   if (mode === "take") return ["start with 5", "start with 5", "start with 10", "start with 10", "start with 20", "start with 20"][L - 1];
   if (mode === "compare") return ["up to 5, easy", "up to 6", "up to 10", "up to 10, close", "up to 15, more or fewer", "up to 20, more or fewer"][L - 1];
   if (mode === "find") return ["1 to 5", "1 to 10", "6 to 12", "8 to 15", "10 to 20", "10 to 20, look-alikes"][L - 1];
-  if (mode === "letters") return ["M, P, A", "7 letters", "13 letters", "all 26 big letters", "little letters too", "big to little match"][L - 1];
+  if (mode === "letters") return ["M, P, A, big or little", "7 letters, big or little", "13 letters, big or little", "all 26, big or little", "all 26, big or little", "big to little match"][L - 1];
   return ["1 to 3, dice dots", "1 to 4, dice dots", "1 to 5, dice dots", "2 to 5, mixed up", "2 to 5, a bit faster", "3 to 5, fastest"][L - 1];
 }
 
@@ -447,7 +447,8 @@ function makeQuick(lv: number): Q {
   return q;
 }
 
-// Letter Land: M, P, A first (his letter books), then more letters, then little letters and big-to-little matching.
+// Letter Land: M, P, A first (his letter books), then more letters. About half of
+// find-the-letter rounds are little letters; level 6 matches big to little.
 const LETTER_ORDER: string[] = "MPASTOBDCEHILNRFGKUWYJVQXZ".split("");
 const LOOK_UP: { [k: string]: string } = {
   M: "NW", N: "MH", W: "MV", P: "BRD", B: "PDR", R: "PBK", D: "OPB", O: "QCD", Q: "OG", C: "OG", G: "CO", E: "FB", F: "ET",
@@ -465,11 +466,13 @@ function letterPool(lv: number): string[] {
 function makeLetters(lv: number): Q {
   const q = blankQ("letters", lv);
   let kind: LetterKind = "upper";
-  let pool = letterPool(lv);
-  if (lv === 5) {
-    if (Math.random() < 0.5) { kind = "lower"; pool = LETTER_ORDER.slice(0, 13); }
-  } else if (lv >= 6) {
+  const pool = letterPool(lv);
+  // Little letters from the first level, about half the find-the-letter rounds.
+  // Level 6 stays the big-to-little truck match, with some little-letter rounds mixed in.
+  if (lv >= 6) {
     kind = Math.random() < 0.6 ? "match" : "lower";
+  } else if (Math.random() < 0.5) {
+    kind = "lower";
   }
   const T = pool[rand(0, pool.length - 1)];
   const set: string[] = [T];
@@ -480,15 +483,15 @@ function makeLetters(lv: number): Q {
     for (let i = 0; i < la.length && set.length < 1 + want; i++) if (set.indexOf(la[i]) < 0) set.push(la[i]);
   }
   let guard = 0;
-  while (set.length < 3 && guard < 300) {
+  while (set.length < 5 && guard < 300) {
     guard++;
     const x = pool[rand(0, pool.length - 1)];
     if (set.indexOf(x) < 0) set.push(x);
   }
-  for (let i = 0; set.length < 3 && i < LETTER_ORDER.length; i++) if (set.indexOf(LETTER_ORDER[i]) < 0) set.push(LETTER_ORDER[i]);
+  for (let i = 0; set.length < 5 && i < LETTER_ORDER.length; i++) if (set.indexOf(LETTER_ORDER[i]) < 0) set.push(LETTER_ORDER[i]);
   const show = (ch: string) => (kind === "upper" ? ch : ch.toLowerCase());
   q.labels = shuffle(set).map(show);
-  q.choices = [0, 1, 2];
+  q.choices = [0, 1, 2, 3, 4];
   q.answer = q.labels.indexOf(show(T));
   q.target = T;
   q.letterKind = kind;
@@ -1575,7 +1578,7 @@ function unlockMessage(list: Reward[]): { text: string; speak: string } {
 
 function LetterTruck(props: { big: string; small: string; hooked: boolean }) {
   return (
-    <svg width="440" height="190" viewBox="0 0 440 190" style={{ display: "block", maxWidth: "100%", height: "auto" }} aria-label={"Truck with big " + props.big}>
+    <svg width="440" height="190" viewBox="0 0 440 190" style={{ display: "block", maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", flex: "1 1 auto", minHeight: 0 }} aria-label={"Truck with big " + props.big}>
       <rect x="10" y="36" width="160" height="104" rx="12" fill={props.hooked ? "#FFFFFF" : "rgba(255,255,255,0.7)"} stroke="#1E3A5F" strokeWidth="5" strokeDasharray={props.hooked ? "none" : "14 9"} />
       <text x="90" y="118" fontSize="92" textAnchor="middle" fontWeight="900" fill="#0F172A" fontFamily='ui-rounded, "Nunito", Arial, sans-serif'>{props.small}</text>
       <path d="M170 124 H204" stroke="#334155" strokeWidth="7" />
@@ -1802,6 +1805,13 @@ export default function App() {
   const theme = useGrokTheme();
   const font = 'ui-rounded, "Nunito", "Segoe UI Rounded", ' + theme.font.family;
   const [boot] = useState<{ save: Save; migrated: boolean }>(() => loadSave());
+  const [vpH, setVpH] = useState<number>(800);
+  useEffect(() => {
+    const onResize = () => setVpH(window.innerHeight);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [save, setSave] = useState<Save>(boot.save);
   const [screen, setScreen] = useState<Screen>("home");
   const [mode, setMode] = useState<Mode>("count");
@@ -2288,18 +2298,18 @@ export default function App() {
       const shown = q.letterKind === "upper" ? q.target : q.target.toLowerCase();
       if (q.letterKind === "match") {
         return (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, width: "100%" }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: "#0F2A4A", background: "rgba(255,255,255,0.9)", borderRadius: 12, padding: "2px 12px" }}>🚚 Big letter truck needs its little letter trailer!</div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", height: "100%", minHeight: 0 }}>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#0F2A4A", background: "rgba(255,255,255,0.9)", borderRadius: 12, padding: "2px 12px", flexShrink: 0 }}>🚚 Big letter truck needs its little letter trailer!</div>
             <LetterTruck big={q.target} small={locked ? q.labels[q.answer] : "?"} hooked={locked} />
           </div>
         );
       }
       return (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, minHeight: 170, flexWrap: "wrap" }}>
-          <Yaya mood={yayaMood} size={110} outfit={outfit} />
-          <div style={{ background: "#FFFFFF", border: "5px solid #1E3A5F", borderRadius: 28, padding: "14px 26px", fontSize: 30, fontWeight: 900, color: "#0F2A4A", minWidth: 200, textAlign: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", height: "100%", minHeight: 0, flexWrap: "nowrap" }}>
+          <Yaya mood={yayaMood} size={80} outfit={outfit} />
+          <div style={{ background: "#FFFFFF", border: "5px solid #1E3A5F", borderRadius: 24, padding: "8px 14px", fontSize: 22, fontWeight: 900, color: "#0F2A4A", minWidth: 0, textAlign: "center" }}>
             {reveal || locked ? (
-              <span>{"Find "}<span style={{ fontSize: 80, lineHeight: "88px", fontFamily: 'ui-rounded, "Nunito", Arial, sans-serif' }}>{shown}</span>{" !"}</span>
+              <span>{"Find "}<span style={{ fontSize: 56, lineHeight: "60px", fontFamily: 'ui-rounded, "Nunito", Arial, sans-serif' }}>{shown}</span>{" !"}</span>
             ) : (
               <span>{"🔊 Listen to Yaya!"}</span>
             )}
@@ -2446,18 +2456,28 @@ export default function App() {
 
   const lvNow = save.levels[mode];
   const inRow = streak % 3;
-  const bigChoices = q.mode === "find" || q.mode === "letters";
-  const choiceSize = bigChoices ? 150 : q.choices.length > 3 ? 104 : 124;
+  const letterChoices = q.mode === "letters";
+  const letterPlay = screen === "play" && letterChoices;
+  // Short phones: tighten the header so five letter tiles still sit on screen.
+  const shortPlay = letterPlay && vpH <= 760;
+  const bigChoices = q.mode === "find" || letterChoices;
+  // Five letter tiles: three across on a phone, up to five on a wider screen, still a big tap target.
+  const choiceSize = letterChoices ? "min(148px, calc((100% - 32px) / 3))" : bigChoices ? 150 : q.choices.length > 3 ? 104 : 124;
 
   return (
     <div style={{
       fontFamily: font,
       color: "#1E3A5F",
       background: "linear-gradient(#7EC8E3, #FDE68A 55%, #FDBA74)",
-      padding: 18,
+      padding: shortPlay ? 8 : 18,
       maxWidth: 840,
       margin: "0 auto",
-      minHeight: "100%",
+      minHeight: letterPlay ? 0 : "100%",
+      height: letterPlay ? "100dvh" : undefined,
+      maxHeight: letterPlay ? "100dvh" : undefined,
+      overflow: letterPlay ? "hidden" : undefined,
+      display: letterPlay ? "flex" : undefined,
+      flexDirection: letterPlay ? "column" : undefined,
       boxSizing: "border-box",
     }}>
       <style>{`
@@ -2473,12 +2493,12 @@ export default function App() {
         @keyframes miles-pop-in { 0% { transform: translate(-50%, -50%) scale(0.3); } 100% { transform: translate(-50%, -50%) scale(1); } }
       `}</style>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: shortPlay ? 6 : 10, flexShrink: letterPlay ? 0 : undefined }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <BuddyPic buddy={save.buddy} mood={screen === "play" ? yayaMood : "idle"} size={screen === "home" ? 92 : 70} outfit={buddyOutfit} />
+          <BuddyPic buddy={save.buddy} mood={screen === "play" ? yayaMood : "idle"} size={screen === "home" ? 92 : shortPlay ? 46 : 70} outfit={buddyOutfit} />
           <div>
-            <div style={{ fontSize: 30, fontWeight: 800, lineHeight: "34px", color: "#0F2A4A" }}>Miles's Vroom Count</div>
-            <div style={{ fontSize: 22, fontWeight: 800 }}>
+            <div style={{ fontSize: shortPlay ? 18 : 30, fontWeight: 800, lineHeight: shortPlay ? "22px" : "34px", color: "#0F2A4A" }}>Miles's Vroom Count</div>
+            <div style={{ fontSize: shortPlay ? 15 : 22, fontWeight: 800 }}>
               {"⭐ " + save.stars}
               {screen === "play" ? (
                 <span style={{ fontSize: 16, fontWeight: 700, color: "#334155", marginLeft: 10 }}>
@@ -2491,10 +2511,10 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {screen !== "home" ? <button style={pillBtn(false)} onClick={() => goScreen("home")}>🗺️ Map</button> : null}
-          <button style={pillBtn(screen === "dress")} onClick={() => { setDressWho(save.buddy); goScreen("dress"); }}>👕 Dress Up</button>
-          <button style={pillBtn(screen === "garage")} onClick={() => goScreen("garage")}>🏠 Garage</button>
+        <div style={{ display: "flex", gap: shortPlay ? 4 : 8, flexWrap: shortPlay ? "nowrap" : "wrap" }}>
+          {screen !== "home" ? <button style={shortPlay ? { ...pillBtn(false), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(false)} onClick={() => goScreen("home")}>🗺️ Map</button> : null}
+          <button style={shortPlay ? { ...pillBtn(screen === "dress"), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(screen === "dress")} onClick={() => { setDressWho(save.buddy); goScreen("dress"); }}>👕 Dress Up</button>
+          <button style={shortPlay ? { ...pillBtn(screen === "garage"), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(screen === "garage")} onClick={() => goScreen("garage")}>🏠 Garage</button>
         </div>
       </div>
 
@@ -2577,7 +2597,7 @@ export default function App() {
             <button style={{ ...pillBtn(false), minWidth: 64, minHeight: 64, fontSize: 28, padding: 6 }} aria-label="Say the next prize" onClick={() => say(prizeSpeech)}>🔊</button>
           </div>
           <div style={{ marginTop: 18, fontSize: 14, color: "#334155", lineHeight: "20px", background: "rgba(255,255,255,0.6)", borderRadius: 14, padding: "10px 12px" }}>
-            For the grown-up: start with Count, then let Miles wander. Each road has levels 1 to 6 and moves up after 3 right in a row. A star comes only from a right answer on the very first tap: the answer buttons stay dimmed until Yaya finishes asking, and after the first tap they lock until the result shows, so spamming never earns stars. After a miss he can still answer, and the help kicks in (items light up and count along, the Add groups zoom together, Quick Look shows them again). In Bigger or Smaller, Yaya says "fewer means the little pile" on every fewer question until he gets 3 fewer questions right in a row. Letter Land starts with M, P and A from his books and works up to all 26, then little letters and big-to-little matching. Rewards come one at a time: Yaya's items, Rex the dino at 39 stars, Rex's 12 items (42 to 75), then the garage at 78 with a new car every 3 stars, golden cars, garage extras, and a trophy every 20 stars after 280. The box above always shows the next prize. Everything saves on this device; to move to another iPad, press and hold the grown-up button below for a save code.
+            For the grown-up: start with Count, then let Miles wander. Each road has levels 1 to 6 and moves up after 3 right in a row. A star comes only from a right answer on the very first tap: the answer buttons stay dimmed until Yaya finishes asking, and after the first tap they lock until the result shows, so spamming never earns stars. After a miss he can still answer, and the help kicks in (items light up and count along, the Add groups zoom together, Quick Look shows them again). In Bigger or Smaller, Yaya says "fewer means the little pile" on every fewer question until he gets 3 fewer questions right in a row. Letter Land starts with M, P and A from his books and works up to all 26. About half the rounds are little letters (five choices), and the top level matches a big letter to its little letter. Rewards come one at a time: Yaya's items, Rex the dino at 39 stars, Rex's 12 items (42 to 75), then the garage at 78 with a new car every 3 stars, golden cars, garage extras, and a trophy every 20 stars after 280. The box above always shows the next prize. Everything saves on this device; to move to another iPad, press and hold the grown-up button below for a save code.
           </div>
           <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
             <button
@@ -2768,10 +2788,10 @@ export default function App() {
       ) : null}
 
       {screen === "play" ? (
-        <div data-mode={q.mode} data-answer={q.answer} data-level={q.level} data-ready={ready && !resolving ? "1" : "0"} data-qid={qNum} data-letter-kind={q.mode === "letters" ? q.letterKind : ""}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "12px 0 10px" }}>
+        <div data-mode={q.mode} data-answer={q.answer} data-level={q.level} data-ready={ready && !resolving ? "1" : "0"} data-qid={qNum} data-letter-kind={q.mode === "letters" ? q.letterKind : ""} style={letterPlay ? { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" } : undefined}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: letterPlay ? "4px 0 6px" : "12px 0 10px", flexShrink: letterPlay ? 0 : undefined }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 28, fontWeight: 900, lineHeight: "34px", color: "#0F2A4A" }}>{promptFor(q, gone)}</div>
+              <div style={{ fontSize: shortPlay ? 22 : 28, fontWeight: 900, lineHeight: shortPlay ? "26px" : "34px", color: "#0F2A4A" }}>{promptFor(q, gone)}</div>
               {q.mode === "compare" ? (
                 <div style={{ display: "inline-block", marginTop: 6, fontSize: 30, fontWeight: 900, padding: "4px 16px", borderRadius: 16, background: "#FFFFFF", border: "4px solid #0F2A4A" }}>
                   {q.ask === "more" ? "⬆️ MORE" : "⬇️ FEWER"}
@@ -2789,15 +2809,16 @@ export default function App() {
                 {"In a row: " + upTo(3).map((k) => (k < inRow ? "●" : "○")).join(" ") + "   ·   " + levelInfo(mode, lvNow)}
               </div>
             </div>
-            <button style={{ ...pillBtn(false), minWidth: 70, minHeight: 70, fontSize: 32, padding: 8 }} onClick={() => say(speechFor(q))} aria-label="Read it to me">🔊</button>
+            <button style={{ ...pillBtn(false), minWidth: shortPlay ? 46 : 70, minHeight: shortPlay ? 46 : 70, fontSize: shortPlay ? 22 : 32, padding: shortPlay ? 4 : 8 }} onClick={() => say(speechFor(q))} aria-label="Read it to me">🔊</button>
           </div>
 
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative", flex: letterPlay ? "1 1 auto" : undefined, minHeight: letterPlay ? 0 : undefined, display: letterPlay ? "flex" : undefined }}>
             <div style={{
               background: fieldBg(q.kind),
               borderRadius: 28,
-              minHeight: 240,
-              padding: 14,
+              minHeight: letterPlay ? 0 : 240,
+              flex: letterPlay ? "1 1 auto" : undefined,
+              padding: letterPlay ? 8 : 14,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -2840,7 +2861,7 @@ export default function App() {
             ) : null}
           </div>
 
-          <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 12, flexWrap: "wrap", minHeight: 8 }}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: letterPlay ? 6 : 12, flexWrap: "wrap", minHeight: letterPlay ? 0 : 8, flexShrink: letterPlay ? 0 : undefined }}>
             {q.mode === "add" && !joined && !locked ? (
               <button style={pillBtn(false)} onClick={() => { setJoined(true); setFeedback("Zoom! Now count them all."); say("Zoom! Now count them all."); }}>🧲 Zoom together</button>
             ) : null}
@@ -2848,13 +2869,13 @@ export default function App() {
               <button style={pillBtn(false)} onClick={() => setPeekId((p) => p + 1)}>👀 Peek again</button>
             ) : null}
             {(q.mode === "find" || (q.mode === "letters" && q.letterKind !== "match")) && !reveal && !locked ? (
-              <button style={pillBtn(false)} onClick={() => { gate.missed = true; setReveal(true); setMissed(true); setStreak(0); setFeedback("Here it is! Find the one that looks just like it."); }}>👀 Show me</button>
+              <button style={shortPlay ? { ...pillBtn(false), padding: "4px 10px", minHeight: 40, fontSize: 16 } : pillBtn(false)} onClick={() => { gate.missed = true; setReveal(true); setMissed(true); setStreak(0); setFeedback("Here it is! Find the one that looks just like it."); }}>👀 Show me</button>
             ) : null}
           </div>
 
-          <div style={{ textAlign: "center", fontSize: 18, fontWeight: 800, minHeight: 24, color: "#334155", marginTop: 6 }}>{!ready && !locked ? "👂 Listen first…" : ""}</div>
+          <div style={{ textAlign: "center", fontSize: 18, fontWeight: 800, minHeight: letterPlay ? 0 : 24, color: "#334155", marginTop: letterPlay ? 2 : 6, flexShrink: letterPlay ? 0 : undefined }}>{!ready && !locked ? "👂 Listen first…" : ""}</div>
           {q.mode !== "compare" ? (
-            <div style={{ display: "flex", justifyContent: "center", gap: bigChoices ? 22 : 16, margin: "8px 0 10px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", justifyContent: "center", alignItems: letterChoices ? "center" : undefined, gap: letterChoices ? 12 : bigChoices ? 22 : 16, margin: letterChoices ? "6px 0 4px" : "8px 0 10px", flexWrap: "wrap", flexShrink: letterChoices ? 0 : undefined }}>
               {q.choices.map((n) => {
                 const right = picked === n;
                 const wrong = wrongs.indexOf(n) >= 0;
@@ -2864,9 +2885,16 @@ export default function App() {
                   <button key={n} onClick={() => choose(n)} aria-label={"Answer " + label} data-choice={n} disabled={waiting} style={{
                     position: "relative",
                     width: choiceSize,
-                    height: choiceSize,
+                    height: letterChoices ? "auto" : choiceSize,
+                    aspectRatio: letterChoices ? "1 / 1" : undefined,
+                    boxSizing: letterChoices ? "border-box" : undefined,
+                    flexShrink: letterChoices ? 0 : undefined,
+                    display: letterChoices ? "flex" : undefined,
+                    alignItems: letterChoices ? "center" : undefined,
+                    justifyContent: letterChoices ? "center" : undefined,
+                    padding: letterChoices ? 0 : undefined,
                     borderRadius: 30,
-                    fontSize: q.mode === "letters" ? 96 : bigChoices ? 84 : 58,
+                    fontSize: letterChoices ? "clamp(58px, 16vw, 86px)" : bigChoices ? 84 : 58,
                     lineHeight: 1,
                     fontWeight: 900,
                     cursor: "pointer",
@@ -2887,7 +2915,7 @@ export default function App() {
             </div>
           ) : null}
 
-          <div style={{ textAlign: "center", fontSize: 24, minHeight: 36, fontWeight: 900, color: "#0F2A4A", marginTop: q.mode === "compare" ? 14 : 0 }}>{feedback}</div>
+          <div style={{ textAlign: "center", fontSize: 24, minHeight: letterPlay ? 0 : 36, fontWeight: 900, color: "#0F2A4A", marginTop: q.mode === "compare" ? 14 : 0, flexShrink: letterPlay ? 0 : undefined }}>{feedback}</div>
         </div>
       ) : null}
     </div>

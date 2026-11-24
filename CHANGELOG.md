@@ -1,3 +1,7 @@
+## 2026-11-23 — Letter Land: 5 choices and little letters
+- Letter rounds show 5 choices (1 correct letter + 4 different ones, never a copy of the right letter). The tiles wrap and shrink so five big tap targets still fit on a phone or tablet.
+- Little letters from the start: about half of find-the-letter rounds use little letters for the prompt and the choices, and the rest stay big letters. Level 6 still matches a big letter to its little letter. Yaya still says the letter name, so a little "a" is spoken as the letter, not the word.
+
 ## 2026-11-18 — Batch 2 (commit 7139384)
 - Save code: press-and-hold Grown-ups button on the map; "Get my code" / "Enter a code" (VROOM-… base32 with checksum + version), preview and confirm before overwrite; bad codes rejected.
 - Quick Look slower: 2.5s at L1 down to 1.5s at L6.
