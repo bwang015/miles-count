@@ -1,3 +1,7 @@
+## 2026-11-27 — Five number choices
+- Count, Add, Take Away, and Find the Number show 5 numbers: the right answer and 4 other numbers nearby, all inside the allowed range. An answer at the edge (like 1) still gets five, by looking a little further.
+- The number buttons shrink and wrap so five of them fit on a phone or tablet, and the phone header tightens so those buttons stay on the screen. Quick Look still offers 1 through the top number, and Bigger or Smaller is still two piles.
+
 ## 2026-11-23 — Letter Land: 5 choices and little letters
 - Letter rounds show 5 choices (1 correct letter + 4 different ones, never a copy of the right letter). The tiles wrap and shrink so five big tap targets still fit on a phone or tablet.
 - Little letters from the start: about half of find-the-letter rounds use little letters for the prompt and the choices, and the rest stay big letters. Level 6 still matches a big letter to its little letter. Yaya still says the letter name, so a little "a" is spoken as the letter, not the word.

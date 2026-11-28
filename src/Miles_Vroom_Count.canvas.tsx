@@ -249,14 +249,29 @@ function levelInfo(mode: Mode, lv: number): string {
 
 function numChoices(answer: number, lo: number, hi: number, spread: number): number[] {
   const set: number[] = [answer];
+  // Four other numbers, kept near the answer. At the edge (answer 1 in 1-20) a
+  // spread of 2 only reaches 2 and 3, so open it until four neighbors fit.
+  let s = spread;
+  while (s < hi - lo) {
+    let near = 0;
+    for (let n = Math.max(lo, answer - s); n <= Math.min(hi, answer + s); n++) if (n !== answer) near++;
+    if (near >= 4) break;
+    s++;
+  }
   let guard = 0;
-  while (set.length < 3 && guard < 300) {
+  while (set.length < 5 && guard < 300) {
     guard++;
-    const d = rand(1, spread) * (Math.random() < 0.5 ? -1 : 1);
+    const d = rand(1, Math.max(1, s)) * (Math.random() < 0.5 ? -1 : 1);
     const n = answer + d;
     if (n >= lo && n <= hi && set.indexOf(n) < 0) set.push(n);
   }
-  for (let n = lo; set.length < 3 && n <= hi; n++) if (set.indexOf(n) < 0) set.push(n);
+  for (let d = 1; set.length < 5 && d <= hi - lo; d++) {
+    const up = answer + d;
+    const down = answer - d;
+    if (up >= lo && up <= hi && set.indexOf(up) < 0) set.push(up);
+    if (set.length < 5 && down >= lo && down <= hi && set.indexOf(down) < 0) set.push(down);
+  }
+  for (let n = lo; set.length < 5 && n <= hi; n++) if (set.indexOf(n) < 0) set.push(n);
   return shuffle(set);
 }
 
@@ -414,12 +429,18 @@ function makeFind(lv: number): Q {
     for (let i = 0; i < la.length && set.length < 1 + want; i++) if (set.indexOf(la[i]) < 0) set.push(la[i]);
   }
   let guard = 0;
-  while (set.length < 3 && guard < 300) {
+  while (set.length < 5 && guard < 300) {
     guard++;
     const x = lv <= 2 ? rand(lo, hi) : n + rand(-4, 4);
     if (x >= lo && x <= hi && set.indexOf(x) < 0) set.push(x);
   }
-  for (let x = lo; set.length < 3 && x <= hi; x++) if (set.indexOf(x) < 0) set.push(x);
+  for (let d = 1; set.length < 5 && d <= hi - lo; d++) {
+    const up = n + d;
+    const down = n - d;
+    if (up >= lo && up <= hi && set.indexOf(up) < 0) set.push(up);
+    if (set.length < 5 && down >= lo && down <= hi && set.indexOf(down) < 0) set.push(down);
+  }
+  for (let x = lo; set.length < 5 && x <= hi; x++) if (set.indexOf(x) < 0) set.push(x);
   q.a = n;
   q.answer = n;
   q.choices = shuffle(set);
@@ -1806,8 +1827,12 @@ export default function App() {
   const font = 'ui-rounded, "Nunito", "Segoe UI Rounded", ' + theme.font.family;
   const [boot] = useState<{ save: Save; migrated: boolean }>(() => loadSave());
   const [vpH, setVpH] = useState<number>(800);
+  const [vpW, setVpW] = useState<number>(800);
   useEffect(() => {
-    const onResize = () => setVpH(window.innerHeight);
+    const onResize = () => {
+      setVpH(window.innerHeight);
+      setVpW(window.innerWidth);
+    };
     onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -2282,11 +2307,11 @@ export default function App() {
     }
     if (q.mode === "find") {
       return (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, minHeight: 170, flexWrap: "wrap" }}>
-          <Yaya mood={yayaMood} size={110} outfit={outfit} />
-          <div style={{ background: "#FFFFFF", border: "5px solid #1E3A5F", borderRadius: 28, padding: "14px 26px", fontSize: 30, fontWeight: 900, color: "#0F2A4A", minWidth: 200, textAlign: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: snug ? 10 : 16, minHeight: snug ? 0 : 170, flexWrap: snug ? "nowrap" : "wrap", width: "100%" }}>
+          <Yaya mood={yayaMood} size={snug ? 78 : 110} outfit={outfit} />
+          <div style={{ background: "#FFFFFF", border: "5px solid #1E3A5F", borderRadius: 28, padding: snug ? "8px 12px" : "14px 26px", fontSize: snug ? 22 : 30, fontWeight: 900, color: "#0F2A4A", minWidth: snug ? 0 : 200, textAlign: "center" }}>
             {reveal || locked ? (
-              <span>{"Tap "}<span style={{ fontSize: 72, lineHeight: "80px" }}>{q.answer}</span>{" !"}</span>
+              <span>{"Tap "}<span style={{ fontSize: snug ? 48 : 72, lineHeight: snug ? "52px" : "80px" }}>{q.answer}</span>{" !"}</span>
             ) : (
               <span>{"🔊 Listen to Yaya!"}</span>
             )}
@@ -2460,16 +2485,29 @@ export default function App() {
   const letterPlay = screen === "play" && letterChoices;
   // Short phones: tighten the header so five letter tiles still sit on screen.
   const shortPlay = letterPlay && vpH <= 760;
-  const bigChoices = q.mode === "find" || letterChoices;
+  const findChoices = q.mode === "find";
+  const roadNumbers = q.mode === "count" || q.mode === "add" || q.mode === "take";
+  // Narrow phones: a shorter header so five number buttons sit on the screen.
+  const snug = screen === "play" && (roadNumbers || findChoices) && vpW <= 540;
+  const compact = shortPlay || snug;
   // Five letter tiles: three across on a phone, up to five on a wider screen, still a big tap target.
-  const choiceSize = letterChoices ? "min(148px, calc((100% - 32px) / 3))" : bigChoices ? 150 : q.choices.length > 3 ? 104 : 124;
+  // Find the Number stays big, but five 150px buttons cannot sit on a phone, so they shrink to three across and wrap.
+  // Count, Add, and Take Away do the same at a smaller size. Quick Look keeps 1..max at the old sizes.
+  const choiceSize = letterChoices
+    ? "min(148px, calc((100% - 32px) / 3))"
+    : findChoices
+      ? "min(128px, calc((100% - 36px) / 3))"
+      : roadNumbers
+        ? "min(124px, calc((100% - 40px) / 3))"
+        : q.choices.length > 3 ? 104 : 124;
+  const choiceGap = letterChoices ? 12 : findChoices ? 10 : 16;
 
   return (
     <div style={{
       fontFamily: font,
       color: "#1E3A5F",
       background: "linear-gradient(#7EC8E3, #FDE68A 55%, #FDBA74)",
-      padding: shortPlay ? 8 : 18,
+      padding: compact ? 8 : 18,
       maxWidth: 840,
       margin: "0 auto",
       minHeight: letterPlay ? 0 : "100%",
@@ -2493,12 +2531,12 @@ export default function App() {
         @keyframes miles-pop-in { 0% { transform: translate(-50%, -50%) scale(0.3); } 100% { transform: translate(-50%, -50%) scale(1); } }
       `}</style>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: shortPlay ? 6 : 10, flexShrink: letterPlay ? 0 : undefined }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: compact ? 6 : 10, flexShrink: letterPlay ? 0 : undefined }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <BuddyPic buddy={save.buddy} mood={screen === "play" ? yayaMood : "idle"} size={screen === "home" ? 92 : shortPlay ? 46 : 70} outfit={buddyOutfit} />
+          <BuddyPic buddy={save.buddy} mood={screen === "play" ? yayaMood : "idle"} size={screen === "home" ? 92 : compact ? 46 : 70} outfit={buddyOutfit} />
           <div>
-            <div style={{ fontSize: shortPlay ? 18 : 30, fontWeight: 800, lineHeight: shortPlay ? "22px" : "34px", color: "#0F2A4A" }}>Miles's Vroom Count</div>
-            <div style={{ fontSize: shortPlay ? 15 : 22, fontWeight: 800 }}>
+            <div style={{ fontSize: compact ? 18 : 30, fontWeight: 800, lineHeight: compact ? "22px" : "34px", color: "#0F2A4A" }}>Miles's Vroom Count</div>
+            <div style={{ fontSize: compact ? 15 : 22, fontWeight: 800 }}>
               {"⭐ " + save.stars}
               {screen === "play" ? (
                 <span style={{ fontSize: 16, fontWeight: 700, color: "#334155", marginLeft: 10 }}>
@@ -2511,10 +2549,10 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: shortPlay ? 4 : 8, flexWrap: shortPlay ? "nowrap" : "wrap" }}>
-          {screen !== "home" ? <button style={shortPlay ? { ...pillBtn(false), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(false)} onClick={() => goScreen("home")}>🗺️ Map</button> : null}
-          <button style={shortPlay ? { ...pillBtn(screen === "dress"), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(screen === "dress")} onClick={() => { setDressWho(save.buddy); goScreen("dress"); }}>👕 Dress Up</button>
-          <button style={shortPlay ? { ...pillBtn(screen === "garage"), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(screen === "garage")} onClick={() => goScreen("garage")}>🏠 Garage</button>
+        <div style={{ display: "flex", gap: compact ? 4 : 8, flexWrap: compact ? "nowrap" : "wrap" }}>
+          {screen !== "home" ? <button style={compact ? { ...pillBtn(false), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(false)} onClick={() => goScreen("home")}>🗺️ Map</button> : null}
+          <button style={compact ? { ...pillBtn(screen === "dress"), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(screen === "dress")} onClick={() => { setDressWho(save.buddy); goScreen("dress"); }}>👕 Dress Up</button>
+          <button style={compact ? { ...pillBtn(screen === "garage"), padding: "4px 6px", minHeight: 36, fontSize: 14 } : pillBtn(screen === "garage")} onClick={() => goScreen("garage")}>🏠 Garage</button>
         </div>
       </div>
 
@@ -2597,7 +2635,7 @@ export default function App() {
             <button style={{ ...pillBtn(false), minWidth: 64, minHeight: 64, fontSize: 28, padding: 6 }} aria-label="Say the next prize" onClick={() => say(prizeSpeech)}>🔊</button>
           </div>
           <div style={{ marginTop: 18, fontSize: 14, color: "#334155", lineHeight: "20px", background: "rgba(255,255,255,0.6)", borderRadius: 14, padding: "10px 12px" }}>
-            For the grown-up: start with Count, then let Miles wander. Each road has levels 1 to 6 and moves up after 3 right in a row. A star comes only from a right answer on the very first tap: the answer buttons stay dimmed until Yaya finishes asking, and after the first tap they lock until the result shows, so spamming never earns stars. After a miss he can still answer, and the help kicks in (items light up and count along, the Add groups zoom together, Quick Look shows them again). In Bigger or Smaller, Yaya says "fewer means the little pile" on every fewer question until he gets 3 fewer questions right in a row. Letter Land starts with M, P and A from his books and works up to all 26. About half the rounds are little letters (five choices), and the top level matches a big letter to its little letter. Rewards come one at a time: Yaya's items, Rex the dino at 39 stars, Rex's 12 items (42 to 75), then the garage at 78 with a new car every 3 stars, golden cars, garage extras, and a trophy every 20 stars after 280. The box above always shows the next prize. Everything saves on this device; to move to another iPad, press and hold the grown-up button below for a save code.
+            For the grown-up: start with Count, then let Miles wander. Each road has levels 1 to 6 and moves up after 3 right in a row. A star comes only from a right answer on the very first tap: the answer buttons stay dimmed until Yaya finishes asking, and after the first tap they lock until the result shows, so spamming never earns stars. After a miss he can still answer, and the help kicks in (items light up and count along, the Add groups zoom together, Quick Look shows them again). In Bigger or Smaller, Yaya says "fewer means the little pile" on every fewer question until he gets 3 fewer questions right in a row. Count, Add, Take Away, and Find the Number each show five numbers to choose from (the right one and four others). Letter Land starts with M, P and A from his books and works up to all 26. About half the rounds are little letters (five choices), and the top level matches a big letter to its little letter. Rewards come one at a time: Yaya's items, Rex the dino at 39 stars, Rex's 12 items (42 to 75), then the garage at 78 with a new car every 3 stars, golden cars, garage extras, and a trophy every 20 stars after 280. The box above always shows the next prize. Everything saves on this device; to move to another iPad, press and hold the grown-up button below for a save code.
           </div>
           <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
             <button
@@ -2789,9 +2827,9 @@ export default function App() {
 
       {screen === "play" ? (
         <div data-mode={q.mode} data-answer={q.answer} data-level={q.level} data-ready={ready && !resolving ? "1" : "0"} data-qid={qNum} data-letter-kind={q.mode === "letters" ? q.letterKind : ""} style={letterPlay ? { flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" } : undefined}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: letterPlay ? "4px 0 6px" : "12px 0 10px", flexShrink: letterPlay ? 0 : undefined }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: letterPlay || snug ? "4px 0 6px" : "12px 0 10px", flexShrink: letterPlay ? 0 : undefined }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: shortPlay ? 22 : 28, fontWeight: 900, lineHeight: shortPlay ? "26px" : "34px", color: "#0F2A4A" }}>{promptFor(q, gone)}</div>
+              <div style={{ fontSize: compact ? 22 : 28, fontWeight: 900, lineHeight: compact ? "26px" : "34px", color: "#0F2A4A" }}>{promptFor(q, gone)}</div>
               {q.mode === "compare" ? (
                 <div style={{ display: "inline-block", marginTop: 6, fontSize: 30, fontWeight: 900, padding: "4px 16px", borderRadius: 16, background: "#FFFFFF", border: "4px solid #0F2A4A" }}>
                   {q.ask === "more" ? "⬆️ MORE" : "⬇️ FEWER"}
@@ -2809,14 +2847,14 @@ export default function App() {
                 {"In a row: " + upTo(3).map((k) => (k < inRow ? "●" : "○")).join(" ") + "   ·   " + levelInfo(mode, lvNow)}
               </div>
             </div>
-            <button style={{ ...pillBtn(false), minWidth: shortPlay ? 46 : 70, minHeight: shortPlay ? 46 : 70, fontSize: shortPlay ? 22 : 32, padding: shortPlay ? 4 : 8 }} onClick={() => say(speechFor(q))} aria-label="Read it to me">🔊</button>
+            <button style={{ ...pillBtn(false), minWidth: compact ? 46 : 70, minHeight: compact ? 46 : 70, fontSize: compact ? 22 : 32, padding: compact ? 4 : 8 }} onClick={() => say(speechFor(q))} aria-label="Read it to me">🔊</button>
           </div>
 
           <div style={{ position: "relative", flex: letterPlay ? "1 1 auto" : undefined, minHeight: letterPlay ? 0 : undefined, display: letterPlay ? "flex" : undefined }}>
             <div style={{
               background: fieldBg(q.kind),
               borderRadius: 28,
-              minHeight: letterPlay ? 0 : 240,
+              minHeight: letterPlay || (snug && findChoices) ? 0 : 240,
               flex: letterPlay ? "1 1 auto" : undefined,
               padding: letterPlay ? 8 : 14,
               display: "flex",
@@ -2869,13 +2907,13 @@ export default function App() {
               <button style={pillBtn(false)} onClick={() => setPeekId((p) => p + 1)}>👀 Peek again</button>
             ) : null}
             {(q.mode === "find" || (q.mode === "letters" && q.letterKind !== "match")) && !reveal && !locked ? (
-              <button style={shortPlay ? { ...pillBtn(false), padding: "4px 10px", minHeight: 40, fontSize: 16 } : pillBtn(false)} onClick={() => { gate.missed = true; setReveal(true); setMissed(true); setStreak(0); setFeedback("Here it is! Find the one that looks just like it."); }}>👀 Show me</button>
+              <button style={compact ? { ...pillBtn(false), padding: "4px 10px", minHeight: 40, fontSize: 16 } : pillBtn(false)} onClick={() => { gate.missed = true; setReveal(true); setMissed(true); setStreak(0); setFeedback("Here it is! Find the one that looks just like it."); }}>👀 Show me</button>
             ) : null}
           </div>
 
           <div style={{ textAlign: "center", fontSize: 18, fontWeight: 800, minHeight: letterPlay ? 0 : 24, color: "#334155", marginTop: letterPlay ? 2 : 6, flexShrink: letterPlay ? 0 : undefined }}>{!ready && !locked ? "👂 Listen first…" : ""}</div>
           {q.mode !== "compare" ? (
-            <div style={{ display: "flex", justifyContent: "center", alignItems: letterChoices ? "center" : undefined, gap: letterChoices ? 12 : bigChoices ? 22 : 16, margin: letterChoices ? "6px 0 4px" : "8px 0 10px", flexWrap: "wrap", flexShrink: letterChoices ? 0 : undefined }}>
+            <div style={{ display: "flex", justifyContent: "center", alignItems: letterChoices || findChoices || roadNumbers ? "center" : undefined, gap: choiceGap, margin: letterChoices ? "6px 0 4px" : "8px 0 10px", flexWrap: "wrap", flexShrink: letterChoices ? 0 : undefined }}>
               {q.choices.map((n) => {
                 const right = picked === n;
                 const wrong = wrongs.indexOf(n) >= 0;
@@ -2885,16 +2923,17 @@ export default function App() {
                   <button key={n} onClick={() => choose(n)} aria-label={"Answer " + label} data-choice={n} disabled={waiting} style={{
                     position: "relative",
                     width: choiceSize,
-                    height: letterChoices ? "auto" : choiceSize,
-                    aspectRatio: letterChoices ? "1 / 1" : undefined,
-                    boxSizing: letterChoices ? "border-box" : undefined,
-                    flexShrink: letterChoices ? 0 : undefined,
-                    display: letterChoices ? "flex" : undefined,
-                    alignItems: letterChoices ? "center" : undefined,
-                    justifyContent: letterChoices ? "center" : undefined,
-                    padding: letterChoices ? 0 : undefined,
+                    height: letterChoices || findChoices || roadNumbers ? "auto" : choiceSize,
+                    aspectRatio: letterChoices || findChoices || roadNumbers ? "1 / 1" : undefined,
+                    boxSizing: letterChoices || findChoices || roadNumbers ? "border-box" : undefined,
+                    flexShrink: letterChoices || findChoices || roadNumbers ? 0 : undefined,
+                    display: letterChoices || findChoices || roadNumbers ? "flex" : undefined,
+                    alignItems: letterChoices || findChoices || roadNumbers ? "center" : undefined,
+                    justifyContent: letterChoices || findChoices || roadNumbers ? "center" : undefined,
+                    padding: letterChoices || findChoices || roadNumbers ? 0 : undefined,
+                    whiteSpace: findChoices || roadNumbers ? "nowrap" : undefined,
                     borderRadius: 30,
-                    fontSize: letterChoices ? "clamp(58px, 16vw, 86px)" : bigChoices ? 84 : 58,
+                    fontSize: letterChoices ? "clamp(58px, 16vw, 86px)" : findChoices ? "clamp(48px, 12vw, 72px)" : roadNumbers ? "clamp(42px, 13vw, 58px)" : 58,
                     lineHeight: 1,
                     fontWeight: 900,
                     cursor: "pointer",
